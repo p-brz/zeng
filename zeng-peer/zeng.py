@@ -11,5 +11,13 @@ class Main(object):
         print("alias: ", args.alias)
         print("dir: ", args.dir)
 
+        peer = Peer(host=args.host, alias=args.alias, dir=args.dir)
+
+        try:
+            peer.start()
+            peer.join()
+        except KeyboardInterrupt:
+            peer.stop()
+
 if __name__ == "__main__":
     Main().start()
