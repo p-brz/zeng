@@ -84,6 +84,9 @@ class FileObserver(object):
                     # caso contrário, obtém timestamp do arquivo
                     , changed = time.time() if fileStatus == FileStatus.Removed else None)
 
+            if(file.isHidden()):
+                return
+
             self.filesObserver.saveChange(file)
 
             if self.listener:
@@ -105,8 +108,8 @@ class FileChangeComparator(object):
                     , base_dir= self.base_dir
                     , status  = FileStatus.Unsynced)
 
-                #ignore hidden files
-                if f.filename.startswith("."):
+                #ignore hidden files or directories
+                if f.isHidden():
                     continue
 
                 self._checkChanged(f, filesMap, changes)
@@ -152,6 +155,8 @@ class ChangeFileListener(object):
 
 def main():
     filesDb = FilesDb()
+    filesDb.create()
+
     observer = FileObserver(filesDb)
     base_dir = os.getcwd()
 

@@ -1,6 +1,66 @@
 from os import path
 
 import time
+from datetime import datetime
+
+import sqlalchemy
+from sqlalchemy import Column
+
+import model
+
+
+class TrackedFile(model.Model):
+    __tablename__ = 'files'
+
+    filename = Column(sqlalchemy.String(150), primary_key=True)
+    changed = Column(sqlalchemy.DateTime)
+    status = Column(sqlalchemy.Integer)
+
+    def __init__(self, *args, **kwargs):
+        super(TrackedFile, self).__init__()
+
+        self.changed  = kwargs.get('changed', None)
+        self.status   = kwargs.get('status', FileStatus.Unknown)
+
+        default_filename = args[0] if len(args) > 0 else None
+        self.filename = kwargs.get('filename', default_filename)
+
+        base_dir = kwargs.get('base_dir', None)
+        if base_dir:
+           self.filename = TrackedFile.relative_filename(self.filename, base_dir)
+
+        if not self.changed and self.exists():
+            self.changed = datetime.fromtimestamp(path.getmtime(self.filename))
+
+    def isHidden(self):
+        if not self.filename:
+            return False
+
+        basename = path.basename(self.filename)
+        return self.filename.startswith(".") or basename.startswith(".")
+
+    def clone(self):
+        cloned = TrackedFile()
+        cloned.changed  = self.changed
+        cloned.filename = self.filename
+        cloned.status   = self.status
+        return cloned
+
+    def exists(self):
+        return self.filename is not None and path.exists(self.filename)
+
+    def __repr__(self):
+        return "".join([
+                "<file: ", str(self.filename)
+                , "; changed: ", str(self.changed)
+                , "; status: " , FileStatus.to_string(self.status)
+                ,">"])
+
+    @staticmethod
+    def relative_filename(filename, base_dir):
+        realPath = path.realpath(filename)
+        return path.relpath(realPath, base_dir)
+
 
 class FileStatus(object):
     Unknown=0
@@ -16,42 +76,3 @@ class FileStatus(object):
         if status == Class.Synced   : return "Synced"
         if status == Class.Removed  : return "Removed"
         else                        : return "Unknown"
-
-class TrackedFile(object):
-
-    def __init__(self, *args, **kwargs):
-        self.changed  = kwargs.get('changed', None)
-        self.status   = kwargs.get('status', FileStatus.Unknown)
-
-        default_filename = args[0] if len(args) > 0 else None
-        self.filename = kwargs.get('filename', default_filename)
-
-        base_dir = kwargs.get('base_dir', None)
-        if base_dir:
-           self.filename = TrackedFile.relative_filename(self.filename, base_dir)
-
-        if not self.changed and self.exists():
-            self.changed = path.getmtime(self.filename)
-
-    def clone(self):
-        cloned = TrackedFile()
-        cloned.changed  = self.changed
-        cloned.filename = self.filename
-        cloned.status   = self.status
-        return cloned
-
-    def exists(self):
-        return self.filename is not None and path.exists(self.filename)
-
-
-    def __repr__(self):
-        return "".join([
-                "<file: ", str(self.filename)
-                , "; changed: ", time.asctime(time.gmtime(self.changed))
-                , "; status: " , FileStatus.to_string(self.status)
-                ,">"])
-
-    @staticmethod
-    def relative_filename(filename, base_dir):
-        realPath = path.realpath(filename)
-        return path.relpath(realPath, base_dir)
