@@ -19,6 +19,9 @@ class FilesDb(object):
     def listByName(self):
         return self.files.copy()
 
+    def save(self, file):
+        self.files[file.filename] = file.clone()
+
     def saveAll(self, files):
         for f in files:
-            self.files[f.filename] = f
+            self.save(f)

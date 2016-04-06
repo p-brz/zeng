@@ -19,17 +19,29 @@ class FileStatus(object):
 
 class TrackedFile(object):
 
-    def __init__(self, filename=None, **kwargs):
+    def __init__(self, *args, **kwargs):
         self.changed  = kwargs.get('changed', None)
-        self.filename = kwargs.get('filename', filename)
         self.status   = kwargs.get('status', FileStatus.Unknown)
+
+        default_filename = args[0] if len(args) > 0 else None
+        self.filename = kwargs.get('filename', default_filename)
 
         base_dir = kwargs.get('base_dir', None)
         if base_dir:
            self.filename = TrackedFile.relative_filename(self.filename, base_dir)
 
-        if not self.changed and self.filename is not None:
+        if not self.changed and self.exists():
             self.changed = path.getmtime(self.filename)
+
+    def clone(self):
+        cloned = TrackedFile()
+        cloned.changed  = self.changed
+        cloned.filename = self.filename
+        cloned.status   = self.status
+        return cloned
+
+    def exists(self):
+        return self.filename is not None and path.exists(self.filename)
 
 
     def __repr__(self):
