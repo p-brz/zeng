@@ -9,6 +9,7 @@ from queue import Queue
 
 from db import FilesDb
 from files import FileObserver
+from TrackedFile import TrackedFile
 
 import network
 from network import server
@@ -17,6 +18,9 @@ import defs
 # from zeng.network import server
 
 import pickle
+
+class RequestListFilesEvent(object):
+    pass
 
 class Peer(object):
 
@@ -53,7 +57,10 @@ class Peer(object):
 
         client_socket = network.client.create_client_socket(hostname, port)
 
+        self.event_queue.put(RequestListFilesEvent())
+
         self.received_connection_handler(client_socket, None)
+
 
     def startAsHost(self):
         server_socket = None
@@ -102,12 +109,13 @@ class Peer(object):
     def join(self):
         print("join!")
         self.fileObserver.join()
-        print("joined file observer")
         self.event_queue.join()
         print("finish join")
 
 
     def startFileObserver(self):
+        print("startFileObserver")
+
         #Verify and save local changes
         changes = self.fileObserver.check_changes()
         self.fileObserver.saveAllChanges(changes)
@@ -116,12 +124,17 @@ class Peer(object):
         self.fileObserver.monitor_changes(self)
 
     def onNewFile(self, file):
+        print("new file")
         self.event_queue.put(file)
 
     def onFileChange(self, file):
+        print("file change")
+
         self.event_queue.put(file)
 
     def onFileRemoved(self, file):
+        print("file removed")
+
         self.event_queue.put(file)
 
     def _process_messages(self, peer_socket):
@@ -136,7 +149,7 @@ class Peer(object):
                 self._handle_request(peer_socket)
             else:
                 # Caso contrário (timeout), tenta processar fila de eventos
-                self._process_queue()
+                self._process_queue(peer_socket)
 
         print("finish processing messages")
 
@@ -175,30 +188,49 @@ class Peer(object):
 
         f.close()
 
-    def _process_queue(self):
+    def _process_queue(self, peer_socket):
         try:
             #Loop infinito - será interrompido quando lista estiver vazia (exceção é lançada)
             while True:
                 item = self.event_queue.get_nowait()
 
-                #TODO: tratar item obtido da fila
-                print("Got queue item: ", item)
+                self._handle_queue_item(item, peer_socket)
 
                 self.event_queue.task_done()
         except queue.Empty:
             pass
 
-    def _wait_guest_connect(self):
-        s = self._create_server_socket()
+    def _handle_queue_item(self, item, peer_socket):
+        print ("got item: ", item)
+        if isinstance(item, TrackedFile):
+            self._notify_file_changes(item, [peer_socket])
+        elif isinstance(item, RequestListFilesEvent):
+            self._request_file_list(item, peer_socket)
 
-        conn = None
-        addr = None
-        try:
-               #wait to accept a connection - blocking call
-               conn, addr = s.accept()
-               print('Connected with ' + addr[0] + ':' + str(addr[1]))
-        finally:
-            print("closing server socket")
-            s.close()
 
-        return (conn, addr)
+    def _notify_file_changes(self, files, peer_socket):
+        #TODO: notificar outro socket
+        #TODO: esperar resposta do outro (OK)
+        print("changed files(%d): " % len(files), files)
+        if not files:
+            return
+
+    def _request_file_list(self, item, peer_socket):
+        print("request list of files")
+
+        #TODO: implementar corretamente: (utilizando apenas para teste)
+        self._on_get_file_list(peer_socket, self.filesDb.list())
+
+    def _on_get_file_list(self, peer_socket, file_list):
+        files_diff = self.fileObserver.compare_files(file_list)
+
+        if not files_diff:
+            return
+
+        for f in files_diff.import_changes:
+            self._get_file(f, peer_socket)
+
+        self._notify_file_changes(files_diff.export_changes, peer_socket)
+
+    def _get_file(self, file, peer_socket):
+        print("request file: ", file)
