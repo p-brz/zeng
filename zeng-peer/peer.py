@@ -12,12 +12,13 @@ from files import FileObserver
 
 import network
 from network import server
+from network import client
 import defs
 # from zeng.network import server
 
+import pickle
+
 class Peer(object):
-    HOST = ''   # Symbolic name, meaning all available interfaces
-    PORT = 8888 # Arbitrary non-privileged port
 
     def __init__(self, **kwargs):
         self.dir = kwargs.get('dir')
@@ -26,7 +27,10 @@ class Peer(object):
 
         self.event_queue = Queue()
 
-        self.fileObserver = FileObserver(self.dir, FilesDb())
+        self.filesDb = FilesDb()
+        self.fileObserver = FileObserver(self.dir, self.filesDb)
+
+        self.filesDb.create()
 
         self.running = False
 
@@ -41,7 +45,15 @@ class Peer(object):
     #    self.run(conn, addr)
 
     def startAsGuest(self):
-        pass
+        parts = self.host.split(':')
+        hostname = parts[0]
+        port = int(parts[1]) if len(parts) > 1 else defs.ZENG_DEFAULT_PORT
+
+        print("host: ", hostname, " port: ", port)
+
+        client_socket = network.client.create_client_socket(hostname, port)
+
+        self.received_connection_handler(client_socket, None)
 
     def startAsHost(self):
         server_socket = None

@@ -71,6 +71,10 @@ class FileObserver(object):
 
     def hasFileChanged(self, trackedFile):
         dbFile = self.filesDb.get(filename=trackedFile.filename)
+
+        if dbFile.changed is None or trackedFile.changed is None:
+            return False
+
         return (not dbFile) or (dbFile.changed < trackedFile.changed)
 
     class ObserverAdapter(watchdog.events.FileSystemEventHandler):
