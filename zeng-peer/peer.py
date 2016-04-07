@@ -129,21 +129,39 @@ class Peer(object):
         print("finish processing messages")
 
     def _handle_request(self, conn):
-        #TODO: tratar requisições aqui
-
-        #Receive data from client
         data = conn.recv(1024)
+        zeng_request = pickle.loads(data)
 
-        #Create bytearray to send response
-        reply = bytearray('OK...', 'utf-8')
-        reply.extend(data)
+        if zeng_request['task'] == 'dw':
+            self._handle_download_request(conn, zeng_request)
 
-        print("reply: ", reply)
+        # #Create bytearray to send response
+        # reply = bytearray('OK...', 'utf-8')
+        # reply.extend(data)
+        #
+        # print("reply: ", reply)
+        #
+        # if not data:
+        #     return
+        #
+        # conn.sendall(reply)
 
-        if not data:
-            return
+    def _handle_download_request(self, conn, zeng_request):
+        local_filename = zeng_request['file']
+        file = os.path.join(self.dir, filename)
+        f = open(file, 'rb')
+        serialized = pickle.dump(f.read())
+        conn.sendall(serialized)
 
-        conn.sendall(reply)
+
+    def _receive_file(self, filename, conn):
+        f = open(filename, 'wb')
+        data = socket.recv(1024)
+        while data:
+            f.write(data)
+            data = socket.recv(1024)
+
+        f.close()
 
     def _process_queue(self):
         try:
