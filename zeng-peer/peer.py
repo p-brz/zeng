@@ -25,8 +25,8 @@ class Peer(object):
         self.host = kwargs.get('host')
 
         self.event_queue = Queue()
-
-        self.fileObserver = FileObserver(self.dir, FilesDb())
+        self.filesDb = FilesDb()
+        self.fileObserver = FileObserver(self.dir, self.filesDb)
 
         self.running = False
 
@@ -135,6 +135,9 @@ class Peer(object):
         if zeng_request['task'] == 'dw':
             self._handle_download_request(conn, zeng_request)
 
+        if zeng_request['task'] == 'ls':
+            self._handle_list_request(conn, zeng_request)
+
         # #Create bytearray to send response
         # reply = bytearray('OK...', 'utf-8')
         # reply.extend(data)
@@ -151,6 +154,11 @@ class Peer(object):
         file = os.path.join(self.dir, filename)
         f = open(file, 'rb')
         serialized = pickle.dump(f.read())
+        conn.sendall(serialized)
+
+    def _handle_download_request(self, conn, zeng_request):
+        files = self.filesDb.list()
+        serialized_data = pickle.dumps(files)
         conn.sendall(serialized)
 
 
