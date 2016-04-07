@@ -15,9 +15,10 @@ class Main(object):
 
         try:
             peer.start()
-            peer.join()
-        except KeyboardInterrupt:
+        except:
             peer.stop()
+        finally:
+            peer.join()
 
 if __name__ == "__main__":
     Main().start()

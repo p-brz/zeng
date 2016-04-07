@@ -26,6 +26,7 @@ def monitor_changes():
 class FileObserver(object):
     def __init__(self, filesDb):
         self.filesDb = filesDb
+        self.observer = None
 
     def check_changes(self, base_dir):
         comparator = FileChangeComparator(self.filesDb, base_dir)
@@ -46,13 +47,26 @@ class FileObserver(object):
             self.saveChange(f)
 
     def monitor_changes(self, base_dir, listener):
+        #if is monitoring files, stop
+        self.stop()
+
         event_handler = FileObserver.ObserverAdapter(listener, self, base_dir)
 
-        observer = Observer()
-        observer.schedule(event_handler, base_dir, recursive=True)
-        observer.start()
+        self.observer = Observer()
+        self.observer.schedule(event_handler, base_dir, recursive=True)
+        self.observer.start()
 
-        return observer
+    def stop(self):
+        if self.observer:
+            self.observer.stop()
+
+    def join(self):
+        if self.observer:
+            self.observer.join()
+
+    def hasFileChanged(self, trackedFile):
+        dbFile = self.filesDb.get(filename=trackedFile.filename)
+        return (not dbFile) or (dbFile.changed < trackedFile.changed)
 
     class ObserverAdapter(watchdog.events.FileSystemEventHandler):
         def __init__(self, listener, filesObserver, base_dir):
@@ -77,14 +91,15 @@ class FileObserver(object):
             self.notify_event(event.dest_path, FileStatus.Unsynced, 'onNewFile')
 
         def notify_event(self, path, fileStatus, method_name):
+            now = datetime.fromtimestamp(time.time())
             file = TrackedFile(path
                     , status = fileStatus
                     , base_dir = self.base_dir
                     # Se arquivo é removido, utiliza 'agora' como timestamp,
                     # caso contrário, obtém timestamp do arquivo
-                    , changed = time.time() if fileStatus == FileStatus.Removed else None)
+                    , changed = now if fileStatus == FileStatus.Removed else None)
 
-            if(file.isHidden()):
+            if file.isHidden() or not self.filesObserver.hasFileChanged(file):
                 return
 
             self.filesObserver.saveChange(file)
@@ -167,13 +182,13 @@ def main():
 
     #monitorar mudanças
     listener = ChangeFileListener()
-    handler = observer.monitor_changes(base_dir, listener)
+    observer.monitor_changes(base_dir, listener)
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        handler.stop()
-    handler.join()
+        observer.stop()
+    observer.join()
 
     printChanges(filesDb.list())
 

@@ -23,6 +23,13 @@ class FilesDb(object):
     def makeSession(self, dbSession=None):
         return dbSession if dbSession is not None else FilesDb.Session()
 
+    def get(self, dbSession=None, **kwargs):
+        s = self.makeSession(dbSession)
+
+        filename = kwargs.get('filename')
+
+        return s.query(TrackedFile).filter(TrackedFile.filename == filename).one_or_none()
+
     def list(self, dbSession=None):
         s = self.makeSession(dbSession)
 
