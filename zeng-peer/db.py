@@ -36,13 +36,7 @@ class FilesDb(object):
         return s.query(TrackedFile).all()
 
     def listByName(self):
-        files = self.list()
-        filesByName = {}
-
-        for f in files:
-            filesByName[f.filename] = f
-
-        return filesByName
+        return TrackedFile.index_by_name(self.list())
 
     def save(self, file, dbSession=None, autocommit=True):
         s = self.makeSession(dbSession)

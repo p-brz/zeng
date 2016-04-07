@@ -61,6 +61,15 @@ class TrackedFile(model.Model):
         realPath = path.realpath(filename)
         return path.relpath(realPath, base_dir)
 
+    @staticmethod
+    def index_by_name(files):
+        filesByName = {}
+
+        for f in files:
+            filesByName[f.filename] = f
+
+        return filesByName
+
 
 class FileStatus(object):
     Unknown=0

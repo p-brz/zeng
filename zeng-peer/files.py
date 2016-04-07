@@ -24,13 +24,18 @@ def monitor_changes():
     event_handler = LoggingEventHandler()
 
 class FileObserver(object):
-    def __init__(self, filesDb):
+    def __init__(self, base_dir, filesDb):
         self.filesDb = filesDb
+        self.base_dir = base_dir
         self.observer = None
 
-    def check_changes(self, base_dir):
-        comparator = FileChangeComparator(self.filesDb, base_dir)
+    def check_changes(self):
+        comparator = FileChangeComparator(self.filesDb, self.base_dir)
         return comparator.check_changes()
+
+    def compare_files(self, other_files):
+        comparator = FileChangeComparator(self.filesDb, self.base_dir)
+        return comparator.compare_files(other_files)
 
     def saveChange(self, trackedFile):
         if not trackedFile:
@@ -46,14 +51,14 @@ class FileObserver(object):
         for f in trackedFiles:
             self.saveChange(f)
 
-    def monitor_changes(self, base_dir, listener):
+    def monitor_changes(self, listener):
         #if is monitoring files, stop
         self.stop()
 
-        event_handler = FileObserver.ObserverAdapter(listener, self, base_dir)
+        event_handler = FileObserver.ObserverAdapter(listener, self,self. base_dir)
 
         self.observer = Observer()
-        self.observer.schedule(event_handler, base_dir, recursive=True)
+        self.observer.schedule(event_handler, self.base_dir, recursive=True)
         self.observer.start()
 
     def stop(self):
@@ -107,6 +112,17 @@ class FileObserver(object):
             if self.listener:
                 getattr(self.listener, method_name)(file.clone())
 
+
+
+class FilesDiff(object):
+    '''
+        Auxiliar para encapsular arquivos que devem ser enviados para outro host (export_changes)
+        e arquivos a serem obtidos do outro (import_changes)
+    '''
+    def __init__(self, **kwargs):
+        self.export_changes = kwargs.get('export_changes', [])
+        self.import_changes = kwargs.get('import_changes', [])
+
 class FileChangeComparator(object):
     def __init__(self, filesDb, base_dir):
         self.filesDb = filesDb
@@ -134,6 +150,37 @@ class FileChangeComparator(object):
 
         return changes
 
+    def compare_files(self, other_files):
+        filesDiff = FilesDiff()
+
+        local_files = self.filesDb.listByName()
+
+        for otherF in other_files:
+            filename = otherF.filename
+
+            localF = local_files.get(filename, None)
+            if localF is None:
+                print("Not found: ", otherF, " in local")
+                filesDiff.import_changes.append(otherF)
+                continue
+
+            # Remove para evitar processar arquivo duas vezes
+            local_files.pop(filename)
+
+            if localF.changed < otherF.changed: #local é mais antigo
+                print("File local: ", localF, " < ", otherF)
+                filesDiff.import_changes.append(otherF)
+            elif localF.changed > otherF.changed: #remoto é mais antigo
+                print("File local: ", localF, " > ", otherF)
+                filesDiff.export_changes.append(localF)
+
+
+        # Arquivos locais que não existem no remoto
+        for f in local_files.values():
+            filesDiff.export_changes.append(f)
+
+        return filesDiff
+
     def _checkChanged(self, f, filesMap, changes):
         dbFile = filesMap.get(f.filename)
         if dbFile is None or self.hasFileChanged(dbFile, f):
@@ -155,7 +202,7 @@ class FileChangeComparator(object):
         return dbFile.changed < trackedFile.changed
 
 def printChanges(changes):
-    print("changes: \n\t", "\n\t".join([repr(x) for x in changes]))
+    print("\t" + "\n\t".join([repr(x) for x in changes]))
 
 class ChangeFileListener(object):
     def onNewFile(self, file):
@@ -172,25 +219,52 @@ def main():
     filesDb = FilesDb()
     filesDb.create()
 
-    observer = FileObserver(filesDb)
     base_dir = os.getcwd()
+    observer = FileObserver(base_dir, filesDb)
 
-    changes = observer.check_changes(base_dir)
-    printChanges(changes)
-    observer.saveAllChanges(changes)
-    printChanges(observer.check_changes(base_dir))
+    changes = observer.check_changes()
+
+    # print("init changes:")
+    # printChanges(changes)
+    # observer.saveAllChanges(changes)
+
+    # print("changes after save:")
+    # printChanges(observer.check_changes())
 
     #monitorar mudanças
-    listener = ChangeFileListener()
-    observer.monitor_changes(base_dir, listener)
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        observer.stop()
-    observer.join()
+    # listener = ChangeFileListener()
+    # observer.monitor_changes(listener)
+    # try:
+    #     while True:
+    #         time.sleep(1)
+    # except KeyboardInterrupt:
+    #     observer.stop()
+    # observer.join()
 
-    printChanges(filesDb.list())
+    #print("current files:")
+    #printChanges(filesDb.list())
+
+    current_files = filesDb.list()
+
+    other_files = current_files[:5]
+
+    now = datetime.fromtimestamp(time.time())
+    other_files[3] = other_files[3].clone()
+    other_files[3].changed = now
+
+    other_files.append(TrackedFile(filename="new", changed=now, status=FileStatus.Unsynced))
+
+    # print("local: ")
+    # printChanges(filesDb.list())
+    # print("remote: ")
+    # printChanges(other_files)
+
+    files_diff = observer.compare_files(other_files)
+
+    print("Files to export: ")
+    printChanges(files_diff.export_changes)
+    print("Files to import: ")
+    printChanges(files_diff.import_changes)
 
 
 if __name__ == "__main__":
