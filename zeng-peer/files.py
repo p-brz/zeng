@@ -166,7 +166,6 @@ class FileChangeComparator(object):
 
             localF = local_files.get(filename, None)
             if localF is None:
-                print("Not found: ", otherF, " in local")
                 filesDiff.import_changes.append(otherF)
                 continue
 
@@ -174,10 +173,8 @@ class FileChangeComparator(object):
             local_files.pop(filename)
 
             if localF.changed < otherF.changed: #local é mais antigo
-                print("File local: ", localF, " < ", otherF)
                 filesDiff.import_changes.append(otherF)
             elif localF.changed > otherF.changed: #remoto é mais antigo
-                print("File local: ", localF, " > ", otherF)
                 filesDiff.export_changes.append(localF)
 
 

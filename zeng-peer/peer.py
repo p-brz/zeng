@@ -9,7 +9,7 @@ from queue import Queue
 
 from db import FilesDb
 from files import FileObserver
-from TrackedFile import TrackedFile
+from TrackedFile import *
 
 import network
 from network import server
@@ -18,6 +18,11 @@ import defs
 # from zeng.network import server
 
 import pickle
+
+from io import StringIO
+
+import os
+import errno
 
 class RequestListFilesEvent(object):
     pass
@@ -157,8 +162,12 @@ class Peer(object):
         data = conn.recv(1024)
         zeng_request = pickle.loads(data)
 
+        print("receive requeset: ", zeng_request)
+
         if zeng_request['task'] == 'dw':
             self._handle_download_request(conn, zeng_request)
+        elif zeng_request['task'] == 'list':
+            self._handle_list_files(conn, zeng_request)
 
         # #Create bytearray to send response
         # reply = bytearray('OK...', 'utf-8')
@@ -172,12 +181,31 @@ class Peer(object):
         # conn.sendall(reply)
 
     def _handle_download_request(self, conn, zeng_request):
-        local_filename = zeng_request['file']
-        file = os.path.join(self.dir, filename)
-        f = open(file, 'rb')
-        serialized = pickle.dump(f.read())
-        conn.sendall(serialized)
+        print("handle download")
 
+        local_filename = zeng_request['file']
+        file = os.path.join(self.dir, local_filename)
+        data = self.read_into_buffer(file)
+
+        self.send_len(len(data), conn)
+        conn.sendall(data)
+
+    def read_into_buffer(self, filename):
+        buf = bytearray(os.path.getsize(filename))
+        with open(filename, 'rb') as f:
+             f.readinto(buf)
+        return buf
+
+    def _handle_list_files(self, conn, zeng_request):
+        files = self.filesDb.list()
+        filesStr = pickle.dumps(files)
+
+        self.send_len(len(filesStr), conn)
+        conn.sendall(filesStr)
+
+    def send_len(self, length, socket):
+        reply = bytearray("length:"+str(length)+"\n", 'utf-8')
+        socket.sendall(reply)
 
     def _receive_file(self, filename, conn):
         f = open(filename, 'wb')
@@ -203,7 +231,7 @@ class Peer(object):
     def _handle_queue_item(self, item, peer_socket):
         print ("got item: ", item)
         if isinstance(item, TrackedFile):
-            self._notify_file_changes(item, [peer_socket])
+            self._notify_file_changes([item], peer_socket)
         elif isinstance(item, RequestListFilesEvent):
             self._request_file_list(item, peer_socket)
 
@@ -215,11 +243,110 @@ class Peer(object):
         if not files:
             return
 
+
+    def printChanges(self, changes):
+        print("\t" + "\n\t".join([repr(x) for x in changes]))
+
     def _request_file_list(self, item, peer_socket):
         print("request list of files")
+        request = {}
+        request['task'] = 'list'
 
-        #TODO: implementar corretamente: (utilizando apenas para teste)
-        self._on_get_file_list(peer_socket, self.filesDb.list())
+        peer_socket.sendall(pickle.dumps(request))
+
+        data = self.receive_data(peer_socket)
+
+        trackedFiles = pickle.loads(data)
+        print("data: ")
+        self.printChanges(trackedFiles)
+
+        diff = self.fileObserver.compare_files(trackedFiles)
+
+        print("after diff")
+
+        self.download_all(diff.import_changes, peer_socket)
+
+    def receive_data(self, peer_socket):
+        lenght = self.receive_len(peer_socket)
+
+        print("receive ", lenght, "bytes")
+
+        data = bytearray()
+
+        print("len data: ", len(data))
+
+        readed = 0
+        while(readed < lenght):
+            chunk = peer_socket.recv(lenght - readed)
+            readed += len(chunk)
+            print("received chunk with ", len(chunk), " bytes")
+
+            data.extend(chunk)
+
+        print("readed total of ", len(data), " bytes")
+
+        return data
+
+    def download_all(self, files, peer_socket):
+        for f in files:
+            self.download_file(f, peer_socket)
+        # self.download_file(files[1], peer_socket)
+
+    def download_file(self, file, peer_socket):
+        print("download: ", file)
+
+        #TODO: correct this
+        if file.status == FileStatus.Removed or os.path.exists(file.filename):
+            return
+
+        request = {}
+        request['task'] = 'dw'
+        request['file'] = file.filename
+
+        peer_socket.sendall(pickle.dumps(request))
+
+        print("after send all download")
+
+        data = self.receive_data(peer_socket)
+
+        print("received: ", len(data), " bytes")
+
+        self.filesDb.save(file)
+        self.save_file(data, file.filename)
+
+    def save_file(self, data, filename):
+        full_filename = os.path.join(self.dir, filename)
+        dirs = os.path.dirname(full_filename)
+
+        self.mkdirs(dirs)
+        f = open(full_filename, 'wb')
+        # for chunk in data:
+        #     print("type: ", type(chunk))
+        #     f.write(chunk)
+        f.write(data)
+        f.close()
+
+    def mkdirs(self, newdir):
+        try: os.makedirs(newdir)
+        except OSError as err:
+            # Reraise the error unless it's about an already existing directory
+            if err.errno != errno.EEXIST or not os.path.isdir(newdir):
+                raise
+
+    def receive_len(self, socket):
+        line = ""
+        # while "\n" not in line:
+        #     line += socket.recv(1)
+
+        buff = bytearray()          # Some decent size, to avoid mid-run expansion
+        while True:
+            data = socket.recv(1)                  # Pull what it can
+            buff.extend(data)                    # Append that segment to the buffer
+            if data.endswith(b'\n') : break
+        line = buff.decode("utf-8")
+        parts = line.split(":")
+
+        return int(parts[1].strip())
 
     def _on_get_file_list(self, peer_socket, file_list):
         files_diff = self.fileObserver.compare_files(file_list)
