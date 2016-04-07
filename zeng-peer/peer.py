@@ -1,3 +1,4 @@
+
 import socket
 import sys
 import threading
@@ -12,8 +13,6 @@ from files import FileObserver
 import network
 from network import server
 import defs
-
-import pickle
 # from zeng.network import server
 
 class Peer(object):
@@ -27,7 +26,7 @@ class Peer(object):
 
         self.event_queue = Queue()
 
-        self.fileObserver = FileObserver(FilesDb())
+        self.fileObserver = FileObserver(self.dir, FilesDb())
 
         self.running = False
 
@@ -98,11 +97,11 @@ class Peer(object):
 
     def startFileObserver(self):
         #Verify and save local changes
-        changes = self.fileObserver.check_changes(self.dir)
+        changes = self.fileObserver.check_changes()
         self.fileObserver.saveAllChanges(changes)
 
         #begin monitor file changes
-        self.fileObserver.monitor_changes(self.dir, self)
+        self.fileObserver.monitor_changes(self)
 
     def onNewFile(self, file):
         self.event_queue.put(file)
@@ -130,43 +129,21 @@ class Peer(object):
         print("finish processing messages")
 
     def _handle_request(self, conn):
+        #TODO: tratar requisições aqui
+
+        #Receive data from client
         data = conn.recv(1024)
-        zeng_request = pickle.loads(data)
 
-        if zeng_request['task'] == 'dw':
-            self._handle_download_request(conn, zeng_request)
+        #Create bytearray to send response
+        reply = bytearray('OK...', 'utf-8')
+        reply.extend(data)
 
-        # #Create bytearray to send response
-        # reply = bytearray('OK...', 'utf-8')
-        # reply.extend(data)
-        #
-        # print("reply: ", reply)
-        #
-        # if not data:
-        #     return
-        #
-        # conn.sendall(reply)
+        print("reply: ", reply)
 
-    def _handle_download_request(self, conn, zeng_request):
-        local_filename = zeng_request['file']
-        file = os.path.join(self.dir, filename)
-        f = open(file, 'rb')
-        serialized = pickle.dump(f.read())
-        conn.sendall(serialized)
+        if not data:
+            return
 
-
-    def _receive_file(self, filename, conn):
-        f = open(filename, 'wb')
-        data = socket.recv(1024)
-        while data:
-            f.write(data)
-            data = socket.recv(1024)
-
-        f.close()
-
-
-
-
+        conn.sendall(reply)
 
     def _process_queue(self):
         try:
