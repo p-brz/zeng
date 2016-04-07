@@ -105,7 +105,7 @@ class FileObserver(object):
             self.filesObserver.saveChange(file)
 
             if self.listener:
-                getattr(self.listener, method_name)(file)
+                getattr(self.listener, method_name)(file.clone())
 
 class FileChangeComparator(object):
     def __init__(self, filesDb, base_dir):

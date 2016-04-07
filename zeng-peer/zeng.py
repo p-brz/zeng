@@ -15,7 +15,7 @@ class Main(object):
 
         try:
             peer.start()
-        except:
+        except KeyboardInterrupt:
             peer.stop()
         finally:
             peer.join()

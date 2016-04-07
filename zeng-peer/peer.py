@@ -10,6 +10,11 @@ from queue import Queue
 from db import FilesDb
 from files import FileObserver
 
+import network
+from network import server
+import defs
+# from zeng.network import server
+
 class Peer(object):
     HOST = ''   # Symbolic name, meaning all available interfaces
     PORT = 8888 # Arbitrary non-privileged port
@@ -21,8 +26,7 @@ class Peer(object):
 
         self.event_queue = Queue()
 
-        self.filesDb = FilesDb()
-        self.fileObserver = FileObserver(self.filesDb)
+        self.fileObserver = FileObserver(FilesDb())
 
         self.running = False
 
@@ -32,29 +36,42 @@ class Peer(object):
         else:
             self.startAsGuest()
 
-    def startAsHost(self):
-        conn, addr = self._wait_guest_connect()
-        self.run(conn, addr)
+    #def startAsHost(self):
+    #    conn, addr = self._wait_guest_connect()
+    #    self.run(conn, addr)
 
     def startAsGuest(self):
         pass
 
-    def run(self, conn, addr):
+    def startAsHost(self):
+        server_socket = None
+        try:
+            server_socket = server.tcp_server_socket('', defs.ZENG_DEFAULT_PORT)
+            # tcp_thread_target(server_socket, self.received_connection_handler)
+            client_socket, client_address = server_socket.accept()
+            self.received_connection_handler(client_socket, client_address)
+
+        finally:
+            print("closing server socket")
+            if server_socket:
+                server_socket.close()
+
+
+    def received_connection_handler(self, client_socket, client_address):
         self.running = True
 
-        if conn is None:
+        if client_socket is None:
             return
 
         self.startFileObserver()
 
         try:
-            conn.sendall(b'Welcome to the server. Type something and hit enter\n') #send only takes string
-            self._process_messages(conn)
+            self._process_messages(client_socket)
         except:
-            raise
+            raise #relança exceção
         finally:
             #ensure that connection is closed
-            conn.close()
+            client_socket.close()
 
     def stop(self):
         print("stop!")
@@ -73,7 +90,9 @@ class Peer(object):
     def join(self):
         print("join!")
         self.fileObserver.join()
+        print("joined file observer")
         self.event_queue.join()
+        print("finish join")
 
 
     def startFileObserver(self):
@@ -85,34 +104,33 @@ class Peer(object):
         self.fileObserver.monitor_changes(self.dir, self)
 
     def onNewFile(self, file):
-        print ("new file: ", file)
         self.event_queue.put(file)
 
     def onFileChange(self, file):
-        print ("changed file: ", file)
         self.event_queue.put(file)
 
     def onFileRemoved(self, file):
-        print ("file removed: ", file)
         self.event_queue.put(file)
 
-    def _process_messages(self, conn):
+    def _process_messages(self, peer_socket):
         while self.running:
-            readReady = []
+            ready_sockets = []
 
-            while len(readReady) == 0 :
-                if not self.running: #Parou de executar
-                    print("stopped!")
-                    return
+            # Bloqueia até tempo de timeout ou detectar que há conteúdo a ser lido em peer_socket
+            ready_sockets, _, _ = select.select([peer_socket], [], [], defs.POLL_TIME)
 
-                readReady,_,_ = select.select([conn], [], [], 1.0)
+            # Se lista não está vazia, então há uma requisição
+            if len(ready_sockets) > 0:
+                self._handle_request(peer_socket)
+            else:
+                # Caso contrário (timeout), tenta processar fila de eventos
+                self._process_queue()
 
-                if len(readReady) == 0:
-                    self._process_queue()
-
-            self._handle_request(readReady[0])
+        print("finish processing messages")
 
     def _handle_request(self, conn):
+        #TODO: tratar requisições aqui
+
         #Receive data from client
         data = conn.recv(1024)
 
@@ -129,9 +147,11 @@ class Peer(object):
 
     def _process_queue(self):
         try:
-            while True: #read until get exception (queue empty)
+            #Loop infinito - será interrompido quando lista estiver vazia (exceção é lançada)
+            while True:
                 item = self.event_queue.get_nowait()
 
+                #TODO: tratar item obtido da fila
                 print("Got queue item: ", item)
 
                 self.event_queue.task_done()
@@ -152,23 +172,3 @@ class Peer(object):
             s.close()
 
         return (conn, addr)
-
-    def _create_server_socket(self):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        print ('Socket created')
-
-        #Bind socket to local host and port
-        try:
-           s.bind((self.HOST, self.PORT))
-        except socket.error as msg:
-        #    print('Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
-            print("error: ", msg)
-            sys.exit()
-
-        print('Socket bind complete')
-
-        #Start listening on socket
-        s.listen(10)
-        print('Socket now listening')
-
-        return s

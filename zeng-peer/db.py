@@ -11,7 +11,7 @@ class FilesDb(object):
         self.dbfile = kwargs.get('dbfile', '.zeng.sqlite')
 
         from sqlalchemy import create_engine
-        self.engine = create_engine('sqlite:///' + self.dbfile)
+        self.engine = create_engine('sqlite:///' + self.dbfile, connect_args={'check_same_thread':False})
 
         from sqlalchemy.orm import sessionmaker
         FilesDb.Session = orm.scoping.scoped_session(sessionmaker())
