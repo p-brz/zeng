@@ -7,6 +7,7 @@ from TrackedFile import *
 
 
 class FilesDb(object):
+
     def __init__(self, **kwargs):
         self.dbfile = kwargs.get('dbfile', '.zeng.sqlite')
 

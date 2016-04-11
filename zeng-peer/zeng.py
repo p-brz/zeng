@@ -5,6 +5,7 @@ from peer import Peer
 
 
 class Main(object):
+
     def start(self):
         args = Cli.Parser().parse()
 

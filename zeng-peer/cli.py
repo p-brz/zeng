@@ -8,13 +8,16 @@ from os import path
 
 
 class Cli(object):
+
     class Arguments(object):
+
         def __init__(self):
             self.alias = None
             self.host = None
             self.dir = os.getcwd()
 
     class Parser(object):
+
         def __init__(self):
             description = ("Shares a directory with a remote peer "
                            "or connect with a remote shared folder."
@@ -31,7 +34,7 @@ class Cli(object):
             self.parser = argparse.ArgumentParser(
                 formatter_class=RawDescriptionHelpFormatter,
                 description=description
-                )
+            )
 
             self.parser.add_argument(
                 "dir", nargs='?', default=os.getcwd(),
@@ -58,7 +61,7 @@ class Cli(object):
                 cliArgs.dir = path.realpath(args.dir)
                 cliArgs.alias = self._getarg(
                     args, 'alias', path.basename(cliArgs.dir)
-                    )
+                )
                 cliArgs.host = None
 
             return cliArgs

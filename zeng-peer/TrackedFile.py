@@ -50,10 +50,10 @@ class TrackedFile(model.Model):
 
     def __repr__(self):
         return "".join([
-                "<file: ", str(self.filename),
-                "; changed: ", str(self.changed),
-                "; status: ", FileStatus.to_string(self.status),
-                ">"])
+            "<file: ", str(self.filename),
+            "; changed: ", str(self.changed),
+            "; status: ", FileStatus.to_string(self.status),
+            ">"])
 
     @staticmethod
     def relative_filename(filename, base_dir):

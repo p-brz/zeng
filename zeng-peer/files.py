@@ -26,6 +26,7 @@ def printChanges(changes):
 
 
 class FileObserver(object):
+
     def __init__(self, base_dir, filesDb):
         self.filesDb = filesDb
         self.base_dir = base_dir
@@ -83,6 +84,7 @@ class FileObserver(object):
             return (dbFile.changed < trackedFile.changed)
 
     class ObserverAdapter(watchdog.events.FileSystemEventHandler):
+
         def __init__(self, listener, filesObserver, base_dir):
             self.listener = listener
             self.filesObserver = filesObserver
@@ -134,12 +136,14 @@ class FilesDiff(object):
         para outro host (export_changes) e arquivos a
         serem obtidos do outro (import_changes)
     '''
+
     def __init__(self, **kwargs):
         self.export_changes = kwargs.get('export_changes', [])
         self.import_changes = kwargs.get('import_changes', [])
 
 
 class FileChangeComparator(object):
+
     def __init__(self, filesDb, base_dir):
         self.filesDb = filesDb
         self.base_dir = base_dir
@@ -213,6 +217,7 @@ class FileChangeComparator(object):
 
 
 class ChangeFileListener(object):
+
     def onNewFile(self, file):
         print ("new file: ", file)
 

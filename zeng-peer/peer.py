@@ -203,7 +203,7 @@ class Peer(object):
         conn.sendall(filesStr)
 
     def send_len(self, length, socket):
-        reply = bytearray("length:"+str(length)+"\n", 'utf-8')
+        reply = bytearray("length:" + str(length) + "\n", 'utf-8')
         socket.sendall(reply)
 
     def _receive_file(self, filename, conn):
