@@ -118,12 +118,7 @@ class Peer(object):
         print("finish join")
 
     def _process_messages(self, peer_socket):
-        zeng_daemon = ZengDaemon(self.dir, peer_socket, self.filesDb)
-        zeng_daemon_client = ZengClientDaemon(self.dir,
-                                              peer_socket,
-                                              self.filesDb,
-                                              self.fileObserver)
-
+        zeng_daemon, zeng_daemon_client = self.create_daemon(peer_socket)
 
         while self.running:
             if self.wait_to_read_socket(peer_socket, defs.POLL_TIME):
@@ -131,6 +126,19 @@ class Peer(object):
             else:
                 # Timeout: tenta processar fila de eventos
                 self.process_queue(zeng_daemon_client)
+
+    def create_daemon(self, peer_socket):
+        zeng_daemon        = ZengDaemon(self.dir,
+                                        peer_socket,
+                                        self.filesDb,
+                                        self.fileObserver)
+
+        zeng_daemon_client = ZengClientDaemon(self.dir,
+                                              peer_socket,
+                                              self.filesDb,
+                                              self.fileObserver)
+
+        return (zeng_daemon, zeng_daemon_client)
 
     def wait_to_read_socket(self, socket, timeout):
         '''Espera por um tempo de até "timeout" segundos para "socket" estar

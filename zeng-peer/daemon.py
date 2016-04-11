@@ -6,15 +6,19 @@ from defs import REQUEST_SEPARATOR_TOKEN
 from utils import log_debug
 from network.server import send_data
 from network.client import receive_data
+from network import client
 from files import *
 
 
 class ZengDaemon(object):
 
-    def __init__(self, zeng_dir, peer_socket, files_db):
+    def __init__(self, zeng_dir, peer_socket, files_db, fileObserver):
         self.dir = zeng_dir
         self.peer_socket = peer_socket
         self.files_db = files_db
+        self.fileObserver = fileObserver
+
+        self.downloader = Downloader(zeng_dir, peer_socket, files_db)
 
     def handle_request(self):
         data = self.peer_socket.recv(1024)
@@ -31,12 +35,20 @@ class ZengDaemon(object):
             self.on_get_file_download(zeng_request)
 
     # GET -> Lida com as respostas do par
-    def on_get_file_update(self, filename, timestamp):
-        pass
+    def on_get_file_update(self, request):
+        self.send_response({"status": "OK"})
+
+        diff = self.fileObserver.compare_files(request.get('files', []))
+
+        if diff and len(diff.import_changes) > 0:
+            log_debug("import changes: ", diff.import_changes)
+
+            self.downloader.download_all(diff.import_changes)
+
 
     def on_get_file_ls(self):
         files = self.files_db.list()
-        send_data(self.peer_socket, files)
+        self.send_response(files)
 
     def on_get_file_download(self, zeng_request):
         log_debug("Calling get_file_download")
@@ -45,7 +57,11 @@ class ZengDaemon(object):
         file = os.path.join(self.dir, local_filename)
         data = open(file, 'rb').read()
 
+        self.send_response(data)
+
+    def send_response(self, data):
         send_data(self.peer_socket, data)
+
 
 
 class ZengClientDaemon(object):
@@ -53,8 +69,10 @@ class ZengClientDaemon(object):
     def __init__(self, shared_dir, peer_socket, files_db, fileObserver):
         self.dir = shared_dir
         self.peer_socket = peer_socket
-        self.files_db = files_db
+        # self.files_db = files_db
         self.fileObserver = fileObserver
+
+        self.downloader = Downloader(shared_dir, peer_socket, files_db)
 
     def handle_event(self, event):
         log_debug("handle_event: ", event)
@@ -63,7 +81,9 @@ class ZengClientDaemon(object):
 
     def sync_changes(self):
         changes = self.get_file_changes()
-        self.download_all(changes.import_changes)
+
+        self.downloader.download_all(changes.import_changes)
+        self.post_file_changes(changes.export_changes)
 
         #TODO: notify local changes to other peer
 
@@ -75,9 +95,20 @@ class ZengClientDaemon(object):
 
         return diff
 
-    def post_file_update(self):
-        pass
+    def post_file_changes(self, files):
+        if files and len(files) > 0:
+            self.do_request('update', files=files)
 
+    def do_request(self, req_type, **data_members):
+        return client.do_request(self.peer_socket, req_type, **data_members)
+
+
+class Downloader(object):
+
+    def __init__(self, zeng_dir, peer_socket, files_db):
+        self.dir = zeng_dir
+        self.peer_socket = peer_socket
+        self.files_db = files_db
 
     def download_all(self, files):
         for f in files:
@@ -90,7 +121,7 @@ class ZengClientDaemon(object):
         if file.status == FileStatus.Removed or os.path.exists(file.filename):
             return
 
-        data = self.do_request('dw', file=file.filename)
+        data = client.do_request(self.peer_socket, 'dw', file=file.filename)
 
         self.save_file(data, file)
 
@@ -111,18 +142,5 @@ class ZengClientDaemon(object):
         if file.changed:
             epoch_time = time.mktime(file.changed.timetuple())
             times = (epoch_time, epoch_time)
-            
+
         os.utime(full_filename, times)
-
-    def do_request(self, type, **data_members):
-        request = {}
-        request['task'] = type
-
-        for k in data_members:
-            request[k] = data_members[k]
-
-        #send request
-        send_data(self.peer_socket, request)
-
-        #receive response
-        return receive_data(self.peer_socket) #TODO: implement timeout
