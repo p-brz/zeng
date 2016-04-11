@@ -3,6 +3,7 @@
 from cli import Cli
 from peer import Peer
 
+
 class Main(object):
     def start(self):
         args = Cli.Parser().parse()
@@ -15,7 +16,7 @@ class Main(object):
 
         try:
             peer.start()
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, EOFError):
             peer.stop()
         finally:
             peer.join()

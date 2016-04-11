@@ -1,12 +1,10 @@
-from os import path
-
 import time
 from datetime import datetime
-
-import sqlalchemy
-from sqlalchemy import Column
+from os import path
 
 import model
+import sqlalchemy
+from sqlalchemy import Column
 
 
 class TrackedFile(model.Model):
@@ -19,15 +17,16 @@ class TrackedFile(model.Model):
     def __init__(self, *args, **kwargs):
         super(TrackedFile, self).__init__()
 
-        self.changed  = kwargs.get('changed', None)
-        self.status   = kwargs.get('status', FileStatus.Unknown)
+        self.changed = kwargs.get('changed', None)
+        self.status = kwargs.get('status', FileStatus.Unknown)
 
         default_filename = args[0] if len(args) > 0 else None
         self.filename = kwargs.get('filename', default_filename)
 
         base_dir = kwargs.get('base_dir', None)
         if base_dir:
-           self.filename = TrackedFile.relative_filename(self.filename, base_dir)
+            self.filename = TrackedFile.relative_filename(self.filename,
+                                                          base_dir)
 
         if not self.changed and self.exists():
             self.changed = datetime.fromtimestamp(path.getmtime(self.filename))
@@ -41,9 +40,9 @@ class TrackedFile(model.Model):
 
     def clone(self):
         cloned = TrackedFile()
-        cloned.changed  = self.changed
+        cloned.changed = self.changed
         cloned.filename = self.filename
-        cloned.status   = self.status
+        cloned.status = self.status
         return cloned
 
     def exists(self):
@@ -51,10 +50,10 @@ class TrackedFile(model.Model):
 
     def __repr__(self):
         return "".join([
-                "<file: ", str(self.filename)
-                , "; changed: ", str(self.changed)
-                , "; status: " , FileStatus.to_string(self.status)
-                ,">"])
+                "<file: ", str(self.filename),
+                "; changed: ", str(self.changed),
+                "; status: ", FileStatus.to_string(self.status),
+                ">"])
 
     @staticmethod
     def relative_filename(filename, base_dir):
@@ -72,16 +71,20 @@ class TrackedFile(model.Model):
 
 
 class FileStatus(object):
-    Unknown=0
-    Unsynced=1 #new or changed
-    Synced=2
-    Removed=3
+    Unknown = 0
+    Unsynced = 1  # new or changed
+    Synced = 2
+    Removed = 3
 
     @staticmethod
     def to_string(status):
         Class = FileStatus
 
-        if status == Class.Unsynced : return "Unsynced"
-        if status == Class.Synced   : return "Synced"
-        if status == Class.Removed  : return "Removed"
-        else                        : return "Unknown"
+        if status == Class.Unsynced:
+            return "Unsynced"
+        if status == Class.Synced:
+            return "Synced"
+        if status == Class.Removed:
+            return "Removed"
+        else:
+            return "Unknown"

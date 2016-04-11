@@ -1,17 +1,19 @@
 
-import model
-from TrackedFile import *
-
 import time
 
+import model
 from sqlalchemy import orm
+from TrackedFile import *
+
 
 class FilesDb(object):
     def __init__(self, **kwargs):
         self.dbfile = kwargs.get('dbfile', '.zeng.sqlite')
 
         from sqlalchemy import create_engine
-        self.engine = create_engine('sqlite:///' + self.dbfile, connect_args={'check_same_thread':False})
+        engine = 'sqlite:///' + self.dbfile
+        self.engine = create_engine(engine,
+                                    connect_args={'check_same_thread': False})
 
         from sqlalchemy.orm import sessionmaker
         FilesDb.Session = orm.scoping.scoped_session(sessionmaker())
@@ -28,7 +30,8 @@ class FilesDb(object):
 
         filename = kwargs.get('filename')
 
-        return s.query(TrackedFile).filter(TrackedFile.filename == filename).one_or_none()
+        return s.query(TrackedFile).filter(
+            TrackedFile.filename == filename).one_or_none()
 
     def list(self, dbSession=None):
         s = self.makeSession(dbSession)
@@ -54,6 +57,7 @@ class FilesDb(object):
 
         s.commit()
 
+
 def main():
     filesDb = FilesDb()
     filesDb.create()
@@ -63,8 +67,8 @@ def main():
     # file = TrackedFile('zeeng-peer/db.py')
     # file.status = FileStatus.Synced
     files = [
-        TrackedFile('zeng-peer/db.py', status=FileStatus.Synced)
-        , TrackedFile('README.md', status=FileStatus.Removed)
+        TrackedFile('zeng-peer/db.py', status=FileStatus.Synced),
+        TrackedFile('README.md', status=FileStatus.Removed)
     ]
     filesDb.saveAll(files)
 

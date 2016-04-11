@@ -1,5 +1,3 @@
-
-
 def receive_file(socket, filename):
     f = open(filename, 'wb')
     loading = True

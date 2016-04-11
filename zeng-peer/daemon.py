@@ -1,5 +1,6 @@
 from zeng.defs import REQUEST_SEPARATOR_TOKEN
 
+
 class ZengDaemon(object):
 
     def __init__(self, my_socket, pair_socket):
