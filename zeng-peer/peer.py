@@ -46,10 +46,9 @@ class Peer(object):
 
     def startAsGuest(self):
         hostname, port = self.get_configured_port()
-        client_socket = network.client.create_client_socket(hostname, port)
-        # self.event_queue.put(RequestListFilesEvent())
+        peer_socket = network.client.create_client_socket(hostname, port)
         self.fire_event('sync')
-        self.run(client_socket, None)
+        self.run(peer_socket)
 
     def get_configured_port(self):
         parts = self.host.split(':')
@@ -66,46 +65,51 @@ class Peer(object):
             server_socket = server.tcp_server_socket('',
                                                      defs.ZENG_DEFAULT_PORT)
 
-            client_socket, client_address = server_socket.accept()
-            self.run(client_socket, client_address)
+            peer_socket, peer_address = server_socket.accept()
+            self.run(peer_socket)
 
         finally:
             print("closing server socket")
             if server_socket:
                 server_socket.close()
 
-    def run(self, client_socket, client_address):
-        self.running = True
-
-        if client_socket is None:
+    def run(self, peer_socket):
+        if peer_socket is None:
             return
 
-        self.startFileObserver()
-
         try:
-            self._process_messages(client_socket)
+            self.running = True
+            self.startFileObserver()
+            self._process_messages(peer_socket)
         except:
             raise  # relança exceção
         finally:
             # ensure that connection is closed
-            client_socket.close()
+            peer_socket.close()
+
+    def startFileObserver(self):
+        self.verify_local_file_changes()
+
+        # begin monitor file changes
+        self.fileObserver.monitor_changes(ChangeFilesListener(self))
+
+    def verify_local_file_changes(self):
+        "Verify and save local changes"
+
+        changes = self.fileObserver.check_changes()
+        self.fileObserver.saveAllChanges(changes)
 
     def stop(self):
         print("stop!")
         self.fileObserver.stop()
-        self._clear_queue()
+        self.clear_queue()
         self.running = False
 
     def fire_event(self, event_type, content=None):
         self.event_queue.put(Event(event_type, content))
 
-    def _clear_queue(self):
-        try:
-            while True:  # read until get exception (queue empty)
-                self.event_queue.get_nowait()
-                self.event_queue.task_done()
-        except queue.Empty:
-            pass
+    def clear_queue(self):
+        self.process_queue(None)
 
     def join(self):
         print("join!")
@@ -113,30 +117,7 @@ class Peer(object):
         self.event_queue.join()
         print("finish join")
 
-    def startFileObserver(self):
-        # Verify and save local changes
-        changes = self.fileObserver.check_changes()
-        self.fileObserver.saveAllChanges(changes)
-
-        # begin monitor file changes
-        self.fileObserver.monitor_changes(self)
-
-    def onNewFile(self, file):
-        print("new file")
-        self.event_queue.put(file)
-
-    def onFileChange(self, file):
-        print("file change")
-        self.event_queue.put(file)
-
-    def onFileRemoved(self, file):
-        print("file removed")
-
-        self.event_queue.put(file)
-
     def _process_messages(self, peer_socket):
-        print("process_messages")
-
         zeng_daemon = ZengDaemon(self.dir, peer_socket, self.filesDb)
         zeng_daemon_client = ZengClientDaemon(self.dir,
                                               peer_socket,
@@ -145,76 +126,61 @@ class Peer(object):
 
 
         while self.running:
-            ready_sockets = []
-
-            # Bloqueia até tempo de timeout
-            # ou detectar que há conteúdo a ser lido em peer_socket
-            ready_sockets, _, _ = select.select([peer_socket],
-                                                [], [], defs.POLL_TIME)
-
-            # Se lista não está vazia, então há uma requisição
-            if len(ready_sockets) > 0:
+            if self.wait_to_read_socket(peer_socket, defs.POLL_TIME):
                 zeng_daemon.handle_request()
             else:
-                # Caso contrário (timeout), tenta processar fila de eventos
-                self._process_queue(zeng_daemon_client)
+                # Timeout: tenta processar fila de eventos
+                self.process_queue(zeng_daemon_client)
 
-    def _process_queue(self, zeng_client):
+    def wait_to_read_socket(self, socket, timeout):
+        '''Espera por um tempo de até "timeout" segundos para "socket" estar
+            pronto para leitura.
+            Caso timeout ocorra retorna None, se não retorna o socket
+        '''
+
+        # Bloqueia até tempo de timeout
+        # ou detectar que há conteúdo a ser lido em socket
+        ready_sockets, _, _ = select.select([socket],
+                                            [], [], timeout)
+
+        if not ready_sockets or len(ready_sockets) == 0:
+            return None
+        else:
+            return ready_sockets[0]
+
+    def process_queue(self, event_handler):
         try:
             # Loop infinito -
             # será interrompido quando lista estiver vazia (exceção é lançada)
             while True:
                 item = self.event_queue.get_nowait()
 
-                self._handle_queue_item(item, zeng_client)
+                if event_handler:
+                    event_handler.handle_event(item)
 
                 self.event_queue.task_done()
         except queue.Empty:
             pass
 
-    def _handle_queue_item(self, item, zeng_client):
-        if isinstance(item, TrackedFile): #TODO: use
-            self._notify_file_changes([item], zeng_client.peer_socket)
-        elif isinstance(item, Event):
-            zeng_client.handle_event(item)
+class ChangeFilesListener(object):
+    class FileEvent(object):
+        def __init__(self, file, type):
+            self.file = file
+            self.type = type
 
-    def _notify_file_changes(self, files, peer_socket):
-        # TODO: notificar outro socket
-        # TODO: esperar resposta do outro (OK)
-        print("changed files(%d): " % len(files), files)
-        if not files:
-            return
+    def __init__(self, peer):
+        self.peer = peer
 
-    def printChanges(self, changes):
-        print("\t" + "\n\t".join([repr(x) for x in changes]))
+    def onNewFile(self, file):
+        self.notify_event(file, 'created')
 
+    def onFileChange(self, file):
+        self.notify_event(file, 'changed')
 
-    def receive_len(self, socket):
-        line = ""
-        # while "\n" not in line:
-        #     line += socket.recv(1)
+    def onFileRemoved(self, file):
+        self.notify_event(file, 'removed')
 
-        buff = bytearray()  # Some decent size, to avoid mid-run expansion
-        while True:
-            data = socket.recv(1)  # Pull what it can
-            buff.extend(data)  # Append that segment to the buffer
-            if data.endswith(b'\n'):
-                break
-        line = buff.decode("utf-8")
-        parts = line.split(":")
+    def notify_event(self, file, type):
+        log_debug("file '", file.filename,"' event: ", type)
 
-        return int(parts[1].strip())
-
-    def _on_get_file_list(self, peer_socket, file_list):
-        files_diff = self.fileObserver.compare_files(file_list)
-
-        if not files_diff:
-            return
-
-        for f in files_diff.import_changes:
-            self._get_file(f, peer_socket)
-
-        self._notify_file_changes(files_diff.export_changes, peer_socket)
-
-    def _get_file(self, file, peer_socket):
-        print("request file: ", file)
+        self.peer.fire_event('file_change', self.FileEvent(file, type))

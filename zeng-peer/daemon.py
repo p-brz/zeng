@@ -65,6 +65,8 @@ class ZengClientDaemon(object):
         changes = self.get_file_changes()
         self.download_all(changes.import_changes)
 
+        #TODO: notify local changes to other peer
+
     def get_file_changes(self):
         log_debug("get_files_list")
 
@@ -82,7 +84,7 @@ class ZengClientDaemon(object):
             self.download_file(f)
 
     def download_file(self, file):
-        log_debug("download: ", file)
+        log_debug("download: ", file.filename)
 
         # TODO: correct this
         if file.status == FileStatus.Removed or os.path.exists(file.filename):
