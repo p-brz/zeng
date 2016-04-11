@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 import time
+import errno
 from os import path
 from stat import *
 
@@ -12,18 +13,14 @@ from TrackedFile import *
 from watchdog.events import LoggingEventHandler
 from watchdog.observers import Observer
 
-
-def monitor_changes():
-    logging.basicConfig(level=logging.INFO,
-                        format='%(asctime)s - %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S')
-    path = sys.argv[1] if len(sys.argv) > 1 else '.'
-    event_handler = LoggingEventHandler()
-
-
-def printChanges(changes):
-    print("\t" + "\n\t".join([repr(x) for x in changes]))
-
+def mkdirs(newdir):
+    """Cria um diretório e seus 'pais' caso não existam"""
+    try:
+        os.makedirs(newdir)
+    except OSError as err:
+        # Reraise the error unless it's about an already existing directory
+        if err.errno != errno.EEXIST or not os.path.isdir(newdir):
+            raise
 
 class FileObserver(object):
 
@@ -214,73 +211,3 @@ class FileChangeComparator(object):
 
     def hasFileChanged(self, dbFile, trackedFile):
         return dbFile.changed < trackedFile.changed
-
-
-class ChangeFileListener(object):
-
-    def onNewFile(self, file):
-        print ("new file: ", file)
-
-    def onFileChange(self, file):
-        print ("changed file: ", file)
-
-    def onFileRemoved(self, file):
-        print ("file removed: ", file)
-
-
-def main():
-    filesDb = FilesDb()
-    filesDb.create()
-
-    base_dir = os.getcwd()
-    observer = FileObserver(base_dir, filesDb)
-
-    changes = observer.check_changes()
-
-    # print("init changes:")
-    # printChanges(changes)
-    # observer.saveAllChanges(changes)
-
-    # print("changes after save:")
-    # printChanges(observer.check_changes())
-
-    # monitorar mudanças
-    # listener = ChangeFileListener()
-    # observer.monitor_changes(listener)
-    # try:
-    #     while True:
-    #         time.sleep(1)
-    # except KeyboardInterrupt:
-    #     observer.stop()
-    # observer.join()
-
-    # print("current files:")
-    # printChanges(filesDb.list())
-
-    current_files = filesDb.list()
-
-    other_files = current_files[:5]
-
-    now = datetime.fromtimestamp(time.time())
-    other_files[3] = other_files[3].clone()
-    other_files[3].changed = now
-
-    other_files.append(TrackedFile(filename="new",
-                                   changed=now,
-                                   status=FileStatus.Unsynced))
-
-    # print("local: ")
-    # printChanges(filesDb.list())
-    # print("remote: ")
-    # printChanges(other_files)
-
-    files_diff = observer.compare_files(other_files)
-
-    print("Files to export: ")
-    printChanges(files_diff.export_changes)
-    print("Files to import: ")
-    printChanges(files_diff.import_changes)
-
-
-if __name__ == "__main__":
-    main()
