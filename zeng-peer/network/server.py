@@ -1,5 +1,7 @@
+import pickle
 import socket
 import threading
+
 import defs
 
 
@@ -28,3 +30,9 @@ def tcp_thread_target(tcp_socket, target_handler):
 
     log_debug('[TCP] Shutting down TCP Server', prefix='tcp')
     tcp_socket.close()
+
+
+def send_data(socket, data):
+    f = socket.makefile('wb', 1024)
+    pickle.dump(data, f, 2)
+    f.close()

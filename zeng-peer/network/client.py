@@ -1,4 +1,5 @@
 import socket
+import pickle
 
 
 def create_client_socket(target_host, target_port):
@@ -7,13 +8,9 @@ def create_client_socket(target_host, target_port):
 
     return client
 
-# client = create_client_socket('127.0.0.1', 8090)
-#
-#
-# msg = raw_input('Enter message to send : ')
-# client.send(msg)
-# response = client.recv(4096)
-#
-# print response
-#
-# client.close()
+
+def receive_data(socket):
+    f = socket.makefile('rb', 1024)
+    data = pickle.load(f)
+    f.close()
+    return data

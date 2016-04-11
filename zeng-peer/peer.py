@@ -15,10 +15,7 @@ from files import FileObserver
 from network import client, server
 from queue import Queue
 from TrackedFile import *
-
-
-class RequestListFilesEvent(object):
-    pass
+from daemon import ZengDaemon
 
 
 class RequestListFilesEvent(object):
@@ -47,22 +44,20 @@ class Peer(object):
         else:
             self.startAsGuest()
 
-    # def startAsHost(self):
-    #    conn, addr = self._wait_guest_connect()
-    #    self.run(conn, addr)
-
     def startAsGuest(self):
+        hostname, port = self.get_configured_port()
+        client_socket = network.client.create_client_socket(hostname, port)
+        self.event_queue.put(RequestListFilesEvent())
+        self.received_connection_handler(client_socket, None)
+
+    def get_configured_port(self):
         parts = self.host.split(':')
         hostname = parts[0]
         port = int(parts[1]) if len(parts) > 1 else defs.ZENG_DEFAULT_PORT
 
         print("host: ", hostname, " port: ", port)
 
-        client_socket = network.client.create_client_socket(hostname, port)
-
-        self.event_queue.put(RequestListFilesEvent())
-
-        self.received_connection_handler(client_socket, None)
+        return (hostname, port)
 
     def startAsHost(self):
         server_socket = None
@@ -140,6 +135,7 @@ class Peer(object):
         self.event_queue.put(file)
 
     def _process_messages(self, peer_socket):
+        zeng_daemon = ZengDaemon(self.dir, peer_socket, self.filesDb)
         while self.running:
             ready_sockets = []
 
@@ -150,44 +146,12 @@ class Peer(object):
 
             # Se lista não está vazia, então há uma requisição
             if len(ready_sockets) > 0:
-                self._handle_request(peer_socket)
+                zeng_daemon.handle_request()
             else:
                 # Caso contrário (timeout), tenta processar fila de eventos
                 self._process_queue(peer_socket)
 
         print("finish processing messages")
-
-    def _handle_request(self, conn):
-        data = conn.recv(1024)
-        zeng_request = pickle.loads(data)
-
-        print("receive requeset: ", zeng_request)
-
-        if zeng_request['task'] == 'dw':
-            self._handle_download_request(conn, zeng_request)
-        elif zeng_request['task'] == 'list':
-            self._handle_list_files(conn, zeng_request)
-
-        # #Create bytearray to send response
-        # reply = bytearray('OK...', 'utf-8')
-        # reply.extend(data)
-        #
-        # print("reply: ", reply)
-        #
-        # if not data:
-        #     return
-        #
-        # conn.sendall(reply)
-
-    def _handle_download_request(self, conn, zeng_request):
-        print("handle download")
-
-        local_filename = zeng_request['file']
-        file = os.path.join(self.dir, local_filename)
-        data = self.read_into_buffer(file)
-
-        self.send_len(len(data), conn)
-        conn.sendall(data)
 
     def read_into_buffer(self, filename):
         buf = bytearray(os.path.getsize(filename))
@@ -207,13 +171,9 @@ class Peer(object):
         socket.sendall(reply)
 
     def _receive_file(self, filename, conn):
-        f = open(filename, 'wb')
-        data = socket.recv(1024)
-        while data:
-            f.write(data)
-            data = socket.recv(1024)
-
-        f.close()
+        data = client.receive_data(conn)
+        with open(filename, 'wb') as output:
+            output.write(data)
 
     def _process_queue(self, peer_socket):
         try:
@@ -252,9 +212,7 @@ class Peer(object):
 
         peer_socket.sendall(pickle.dumps(request))
 
-        data = self.receive_data(peer_socket)
-
-        trackedFiles = pickle.loads(data)
+        trackedFiles = client.receive_data(peer_socket)
         print("data: ")
         self.printChanges(trackedFiles)
 
@@ -305,8 +263,7 @@ class Peer(object):
 
         print("after send all download")
 
-        data = self.receive_data(peer_socket)
-
+        data = client.receive_data(peer_socket)
         print("received: ", len(data), " bytes")
 
         self.filesDb.save(file)
@@ -317,12 +274,8 @@ class Peer(object):
         dirs = os.path.dirname(full_filename)
 
         self.mkdirs(dirs)
-        f = open(full_filename, 'wb')
-        # for chunk in data:
-        #     print("type: ", type(chunk))
-        #     f.write(chunk)
-        f.write(data)
-        f.close()
+        with open(full_filename, 'wb') as output:
+            output.write(data)
 
     def mkdirs(self, newdir):
         try:
