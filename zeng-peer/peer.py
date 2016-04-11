@@ -1,4 +1,3 @@
-
 import errno
 import os
 import pickle
@@ -16,6 +15,10 @@ from files import FileObserver
 from network import client, server
 from queue import Queue
 from TrackedFile import *
+
+
+class RequestListFilesEvent(object):
+    pass
 
 
 class RequestListFilesEvent(object):
@@ -165,9 +168,6 @@ class Peer(object):
         elif zeng_request['task'] == 'list':
             self._handle_list_files(conn, zeng_request)
 
-        if zeng_request['task'] == 'ls':
-            self._handle_list_request(conn, zeng_request)
-
         # #Create bytearray to send response
         # reply = bytearray('OK...', 'utf-8')
         # reply.extend(data)
@@ -200,7 +200,6 @@ class Peer(object):
         filesStr = pickle.dumps(files)
 
         self.send_len(len(filesStr), conn)
-
         conn.sendall(filesStr)
 
     def send_len(self, length, socket):
