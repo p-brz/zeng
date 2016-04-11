@@ -104,6 +104,15 @@ class ZengClientDaemon(object):
         with open(full_filename, 'wb') as output:
             output.write(data)
 
+        #Define o tempo de modificação (e acesso) do arquivo para o timestamp
+        # definido em file (ou para o tempo atual)
+
+        times = None
+        if file.changed:
+            epoch_time = time.mktime(file.changed.timetuple())
+            times = (epoch_time, epoch_time)
+            
+        os.utime(full_filename, times)
 
     def do_request(self, type, **data_members):
         request = {}
