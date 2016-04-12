@@ -13,12 +13,14 @@ class TrackedFile(model.Model):
     filename = Column(sqlalchemy.String(150), primary_key=True)
     changed = Column(sqlalchemy.DateTime)
     status = Column(sqlalchemy.Integer)
+    is_dir = Column(sqlalchemy.Boolean)
 
     def __init__(self, *args, **kwargs):
         super(TrackedFile, self).__init__()
 
         self.changed = kwargs.get('changed', None)
         self.status = kwargs.get('status', FileStatus.Unknown)
+        self.is_dir = kwargs.get('is_dir', None)
 
         default_filename = args[0] if len(args) > 0 else None
         self.filename = kwargs.get('filename', default_filename)
@@ -28,8 +30,12 @@ class TrackedFile(model.Model):
             self.filename = TrackedFile.relative_filename(self.filename,
                                                           base_dir)
 
-        if not self.changed and self.exists():
-            self.changed = datetime.fromtimestamp(path.getmtime(self.filename))
+        if self.exists():
+            if not self.changed:
+                self.changed = datetime.fromtimestamp(path.getmtime(self.filename))
+
+            if self.is_dir is None:
+                self.is_dir = path.isdir(self.filename)
 
     def isHidden(self):
         if not self.filename:
@@ -53,6 +59,7 @@ class TrackedFile(model.Model):
             "<file: ", str(self.filename),
             "; changed: ", str(self.changed),
             "; status: ", FileStatus.to_string(self.status),
+            "; is_dir: ", str(self.is_dir),
             ">"])
 
     @staticmethod

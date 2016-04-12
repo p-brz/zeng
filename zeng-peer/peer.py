@@ -69,7 +69,6 @@ class Peer(object):
             self.run(peer_socket)
 
         finally:
-            print("closing server socket")
             if server_socket:
                 server_socket.close()
 
@@ -100,7 +99,6 @@ class Peer(object):
         self.fileObserver.saveAllChanges(changes)
 
     def stop(self):
-        print("stop!")
         self.fileObserver.stop()
         self.clear_queue()
         self.running = False
@@ -112,10 +110,8 @@ class Peer(object):
         self.process_queue(None)
 
     def join(self):
-        print("join!")
         self.fileObserver.join()
         self.event_queue.join()
-        print("finish join")
 
     def _process_messages(self, peer_socket):
         zeng_daemon, zeng_daemon_client = self.create_daemon(peer_socket)

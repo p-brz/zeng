@@ -1,6 +1,9 @@
+import datetime
 import pickle
 import os
 import files
+import time
+
 
 from defs import REQUEST_SEPARATOR_TOKEN
 from utils import log_debug
@@ -18,7 +21,7 @@ class ZengDaemon(object):
         self.files_db = files_db
         self.fileObserver = fileObserver
 
-        self.downloader = Downloader(zeng_dir, peer_socket, files_db)
+        self.fileSyncer = FileSyncer(zeng_dir, peer_socket, files_db)
 
     def handle_request(self):
         data = self.peer_socket.recv(1024)
@@ -41,9 +44,7 @@ class ZengDaemon(object):
         diff = self.fileObserver.compare_files(request.get('files', []))
 
         if diff and len(diff.import_changes) > 0:
-            log_debug("import changes: ", diff.import_changes)
-
-            self.downloader.download_all(diff.import_changes)
+            self.fileSyncer.sync_all(diff.import_changes)
 
 
     def on_get_file_ls(self):
@@ -51,8 +52,6 @@ class ZengDaemon(object):
         self.send_response(files)
 
     def on_get_file_download(self, zeng_request):
-        log_debug("Calling get_file_download")
-
         local_filename = zeng_request['file']
         file = os.path.join(self.dir, local_filename)
         data = open(file, 'rb').read()
@@ -72,23 +71,29 @@ class ZengClientDaemon(object):
         # self.files_db = files_db
         self.fileObserver = fileObserver
 
-        self.downloader = Downloader(shared_dir, peer_socket, files_db)
+        self.fileSyncer = FileSyncer(shared_dir, peer_socket, files_db)
 
     def handle_event(self, event):
         log_debug("handle_event: ", event)
-        if event.type == 'sync':
+        evtype = event.type
+        if evtype == 'sync':
             self.sync_changes()
+        elif evtype == 'file_change':
+            self.on_file_change(event.content)
 
     def sync_changes(self):
         changes = self.get_file_changes()
 
-        self.downloader.download_all(changes.import_changes)
+        self.fileSyncer.sync_all(changes.import_changes)
         self.post_file_changes(changes.export_changes)
 
-        #TODO: notify local changes to other peer
+    def on_file_change(self, file_evt):
+        changed_file = file_evt.file
+
+        log_debug("on_file_change: ", changed_file)
+        self.post_file_changes([changed_file])
 
     def get_file_changes(self):
-        log_debug("get_files_list")
 
         trackedFiles = self.do_request('list')
         diff = self.fileObserver.compare_files(trackedFiles)
@@ -103,32 +108,70 @@ class ZengClientDaemon(object):
         return client.do_request(self.peer_socket, req_type, **data_members)
 
 
-class Downloader(object):
+class FileSyncer(object):
 
     def __init__(self, zeng_dir, peer_socket, files_db):
         self.dir = zeng_dir
         self.peer_socket = peer_socket
         self.files_db = files_db
 
-    def download_all(self, files):
+    def sync_all(self, files):
         for f in files:
-            self.download_file(f)
+            self.sync_file(f)
+
+    def sync_file(self, file):
+        if not self.file_has_changed(file):
+            return
+        elif file.status == FileStatus.Removed:
+            self.remove_file(file)
+        elif not file.is_dir:
+            self.download_file(file)
 
     def download_file(self, file):
-        log_debug("download: ", file.filename)
-
-        # TODO: correct this
-        if file.status == FileStatus.Removed or os.path.exists(file.filename):
-            return
+        print("downloading: ", file, " ...", end="")
 
         data = client.do_request(self.peer_socket, 'dw', file=file.filename)
 
         self.save_file(data, file)
 
+        print(" Ok")
+
+
+    def remove_file(self, file):
+        print("removing: ", file.filename, " ...", end="")
+
+        try:
+            filename = self.get_full_filename(file)
+            os.remove(filename)
+        except OSError:
+            pass
+
+        removed_file = TrackedFile(filename= file.filename,
+                                   status  = FileStatus.Removed,
+                                   changed = datetime.fromtimestamp(time.time()))
+        self.files_db.save(removed_file)
+
+        print(" Ok")
+
+    def file_has_changed(self, file):
+        db_file = self.files_db.get(filename=file.filename)
+
+        if db_file:
+            return file.changed > db_file.changed
+        elif os.path.exists(file.filename):
+            local_file = TrackedFile(file.filename)
+
+            # precisa baixar se arquivo atual é menos recente ou se foi removido
+            return file.status == FileStatus.Removed or local_file.changed < file.changed
+        else:
+            #se arquivo não existe localmente (ou no banco), deve baixo-lo
+            #se ele não tiver sido removido no par
+            return file.status != FileStatus.Removed
+
     def save_file(self, data, file):
         self.files_db.save(file)
 
-        full_filename = os.path.join(self.dir, file.filename)
+        full_filename = self.get_full_filename(file)
         dirs = os.path.dirname(full_filename)
 
         files.mkdirs(dirs)
@@ -144,3 +187,6 @@ class Downloader(object):
             times = (epoch_time, epoch_time)
 
         os.utime(full_filename, times)
+
+    def get_full_filename(self, file):
+        return os.path.join(self.dir, file.filename)

@@ -20,6 +20,7 @@ class Main(object):
         except (KeyboardInterrupt, EOFError):
             peer.stop()
         finally:
+            print("\nfinishing...")
             peer.join()
 
 if __name__ == "__main__":

@@ -13,6 +13,8 @@ from TrackedFile import *
 from watchdog.events import LoggingEventHandler
 from watchdog.observers import Observer
 
+from utils import log_debug
+
 def mkdirs(newdir):
     """Cria um diretório e seus 'pais' caso não existam"""
     try:
@@ -89,26 +91,30 @@ class FileObserver(object):
 
         def on_created(self, event):
             self.notify_event(event.src_path, FileStatus.Unsynced,
-                              'onNewFile')
+                              'onNewFile', event.is_directory)
 
         def on_deleted(self, event):
             self.notify_event(event.src_path, FileStatus.Removed,
-                              'onFileRemoved')
+                              'onFileRemoved', event.is_directory)
 
         def on_modified(self, event):
             # Ignora mudanças em diretório, pois elas
             # devem estar associadas a um arquivo (adicionado ou removido)
             if not event.is_directory:
                 self.notify_event(event.src_path, FileStatus.Unsynced,
-                                  'onFileChange')
+                                  'onFileChange', event.is_directory)
 
         def on_moved(self, event):
+            is_dir = event.is_directory
             self.notify_event(event.src_path, FileStatus.Removed,
-                              'onFileRemoved')
+                              'onFileRemoved', is_dir)
             self.notify_event(event.dest_path, FileStatus.Unsynced,
-                              'onNewFile')
+                              'onNewFile', is_dir)
 
-        def notify_event(self, path, fileStatus, method_name):
+        def notify_event(self, path, fileStatus, method_name, is_dir):
+            if is_dir: # Não suporta diretórios, atualmente
+                return
+
             now = datetime.fromtimestamp(time.time())
             # Se arquivo é removido, utiliza 'agora' como timestamp,
             # caso contrário, obtém timestamp do arquivo
@@ -117,6 +123,7 @@ class FileObserver(object):
                                status=fileStatus,
                                base_dir=self.base_dir,
                                changed=changed_value)
+
 
             if file.isHidden() or not self.filesObserver.hasFileChanged(file):
                 return
