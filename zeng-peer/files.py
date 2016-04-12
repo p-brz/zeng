@@ -7,6 +7,7 @@ import errno
 from os import path
 from stat import *
 
+import defs
 import watchdog
 from db import FilesDb
 from TrackedFile import *
@@ -14,6 +15,8 @@ from watchdog.events import LoggingEventHandler
 from watchdog.observers import Observer
 
 from utils import log_debug
+
+from IgnorerParser import IgnorerParser
 
 def mkdirs(newdir):
     """Cria um diretório e seus 'pais' caso não existam"""
@@ -30,10 +33,20 @@ class FileObserver(object):
         self.filesDb = filesDb
         self.base_dir = base_dir
         self.observer = None
+        self.ignorer = IgnorerParser()
+
+        ignore_file = path.join(base_dir, defs.IGNORE_FILE)
+        if path.exists(ignore_file):
+            self.ignorer.start(ignore_file)
+
+        log_debug("ignore patterns: ", self.ignorer.ignore_patterns)
+        log_debug("include patterns: ", self.ignorer.include_patterns)
 
     def check_changes(self):
         comparator = FileChangeComparator(self.filesDb, self.base_dir)
-        return comparator.check_changes()
+        changed_files =  comparator.check_changes()
+
+        return [f for f in changed_files if not self.ignorer.ignore(f.filename)]
 
     def compare_files(self, other_files):
         comparator = FileChangeComparator(self.filesDb, self.base_dir)
@@ -112,7 +125,8 @@ class FileObserver(object):
                               'onNewFile', is_dir)
 
         def notify_event(self, path, fileStatus, method_name, is_dir):
-            if is_dir: # Não suporta diretórios, atualmente
+            # Não suporta diretórios, atualmente
+            if is_dir:
                 return
 
             now = datetime.fromtimestamp(time.time())
@@ -125,7 +139,7 @@ class FileObserver(object):
                                changed=changed_value)
 
 
-            if file.isHidden() or not self.filesObserver.hasFileChanged(file):
+            if file.isHidden() or self.is_ignored(file.filename) or not self.filesObserver.hasFileChanged(file):
                 return
 
             self.filesObserver.saveChange(file)
@@ -133,6 +147,8 @@ class FileObserver(object):
             if self.listener:
                 getattr(self.listener, method_name)(file.clone())
 
+        def is_ignored(self, path):
+            return self.filesObserver.ignorer.ignore(path)
 
 class FilesDiff(object):
     '''

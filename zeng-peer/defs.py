@@ -1,8 +1,10 @@
 MAX_CONNECTIONS = 2
 REQUEST_SEPARATOR_TOKEN = ';'
-# DEBUG = True
-DEBUG = False
+DEBUG = True
+# DEBUG = False
 
 ZENG_DEFAULT_PORT = 3810
 
 POLL_TIME = 1.0  # segundos
+
+IGNORE_FILE = ".zengignore"
